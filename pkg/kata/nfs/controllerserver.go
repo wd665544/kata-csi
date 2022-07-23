@@ -3,15 +3,16 @@ package nfs
 import (
 	"context"
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"k8s.io/klog/v2"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"k8s.io/klog/v2"
 )
 
 type ControllerServer struct {
@@ -56,10 +57,11 @@ const separator = "#"
 // CreateVolume create a volume
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	name := req.GetName()
+	klog.Infof("name is %s", name)
 	if len(name) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume name must be provided")
 	}
-
+	klog.Infof("req is %v", *req)
 	if err := isValidVolumeCapabilities(req.GetVolumeCapabilities()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -70,7 +72,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if parameters == nil {
 		parameters = make(map[string]string)
 	}
+	klog.Info("params is %v", parameters)
 	// validate parameters (case-insensitive)
+	direct := false
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
 		case paramServer:
@@ -88,6 +92,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			}
 		case directAssigned:
 			//no op
+			direct = true
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, fmt.Sprintf("invalid parameter %q in storage class", k))
 		}
@@ -102,6 +107,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if len(req.GetVolumeCapabilities()) > 0 {
 		volCap = req.GetVolumeCapabilities()[0]
 	}
+	if direct {
+		delete(parameters, directAssigned)
+	}
 	// Mount nfs base share so we can create a subdirectory
 	if err = cs.internalMount(ctx, nfsVol, parameters, volCap); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to mount nfs server: %v", err.Error())
@@ -115,6 +123,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	fileMode := os.FileMode(mountPermissions)
 	// Create subdirectory under base-dir
 	internalVolumePath := getInternalVolumePath(cs.Driver.workingMountDir, nfsVol)
+	klog.Infof("internal Path is %s", internalVolumePath)
 	if err = os.Mkdir(internalVolumePath, fileMode); err != nil && !os.IsExist(err) {
 		return nil, status.Errorf(codes.Internal, "failed to make subdirectory: %v", err.Error())
 	}
@@ -122,7 +131,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	if err = os.Chmod(internalVolumePath, fileMode); err != nil {
 		klog.Warningf("failed to chmod subdirectory: %v", err.Error())
 	}
-
+	if direct {
+		parameters[directAssigned] = "true"
+	}
 	setKeyValueInMap(parameters, paramSubDir, nfsVol.subDir)
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -252,7 +263,8 @@ func (cs *ControllerServer) internalMount(ctx context.Context, vol *nfsVolume, v
 
 	sharePath := filepath.Join(string(filepath.Separator) + vol.baseDir)
 	targetPath := getInternalMountPath(cs.Driver.workingMountDir, vol)
-
+	klog.Info("share path is %s", sharePath)
+	klog.Info("target path is %s", targetPath)
 	volContext := map[string]string{
 		paramServer: vol.server,
 		paramShare:  sharePath,

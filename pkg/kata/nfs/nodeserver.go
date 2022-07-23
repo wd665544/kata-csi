@@ -39,7 +39,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if req.GetReadonly() {
 		mountOptions = append(mountOptions, "ro")
 	}
-
+	klog.Infof("volume id is ", volumeID)
 	var server, baseDir, subDir string
 	mountPermissions := ns.Driver.mountPermissions
 	performChmodOp := (mountPermissions > 0)
@@ -82,24 +82,31 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 	server = getServerFromSource(server)
 	source := fmt.Sprintf("%s:%s", server, baseDir)
+	klog.Infof("source1 is ",source)
+
 	if subDir != "" {
 		source = strings.TrimRight(source, "/")
 		source = fmt.Sprintf("%s/%s", source, subDir)
 	}
+	
 	if directVolume {
+		source = fmt.Sprintf("%s/%s", source, volumeID)
 		mountInfo := MountInfo{
 			VolumeType: "block",
-			Device: source,
-
+			Device:     source,
+			FsType:     "nfs",
 		}
-		mf, err := json.Marshal(mountInfo); if err != nil {
+		mf, err := json.Marshal(mountInfo)
+		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		cmd := exec.Command("kata-runtime direct-volume add --volume-path %s --mount-info %s", source, string(mf))
+		cmd := exec.Command("kata-runtime", "direct-volume", "add", "--volume-path", source, "--mount-info", string(mf))
+		klog.Infof("cmd is %s", cmd.String())
 		err = cmd.Run(); if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}else {
+		klog.Infof("source is ", source)
 		notMnt, err := ns.mounter.IsLikelyNotMountPoint(targetPath)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -126,7 +133,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			}
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-
+		klog.Infof("success mount")
 		if performChmodOp {
 			if err := chmodIfPermissionMismatch(targetPath, os.FileMode(mountPermissions)); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())

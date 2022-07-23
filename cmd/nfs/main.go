@@ -2,9 +2,10 @@ package main
 
 import (
 	"flag"
+	"os"
+
 	"github.com/wd/kata-csi/pkg/kata/nfs"
 	"k8s.io/klog/v2"
-	"os"
 )
 
 var (
@@ -41,3 +42,8 @@ func handle() {
 	d := nfs.NewDriver(&driverOptions)
 	d.Run(false)
 }
+
+//GOPATH="/opt/go"
+// GOPRIVATE=""
+// GOPROXY="https://proxy.golang.org,direct"
+// GOROOT="/usr/local/go"
