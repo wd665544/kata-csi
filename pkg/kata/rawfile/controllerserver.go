@@ -19,9 +19,9 @@ type ControllerServer struct {
 	Driver *Driver
 }
 
-// nfsVolume is an internal representation of a volume
+// rawVolume is an internal representation of a volume
 // created by the provisioner.
-type nfsVolume struct {
+type rawVolume struct {
 	// Volume id
 	id string
 	// Address of the NFS server.
@@ -38,12 +38,6 @@ type nfsVolume struct {
 	uuid string
 }
 
-// Ordering of elements in the CSI volume id.
-// ID is of the form {server}/{baseDir}/{subDir}.
-// TODO: This volume id format limits baseDir and
-// subDir to only be one directory deep.
-// Adding a new element should always go at the end
-// before totalIDElements
 const (
 	idServer = iota
 	idBaseDir
